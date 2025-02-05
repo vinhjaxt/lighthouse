@@ -48,7 +48,7 @@ jobs:
               if:   matrix.arch == 'x86_64-unknown-linux-gnu'
               run:  |
                 cargo install cross
-                env CROSS_PROFILE=${{ matrix.profile }} make build-lcli-x86_64
+                cross build --bin lcli --target x86_64-unknown-linux-gnu --features "portable,spec-minimal" --profile "${{ matrix.profile }}" --locked
             # Create release
             - name: Generate release tag
               id: tag
