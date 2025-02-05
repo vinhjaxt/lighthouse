@@ -101,153 +101,43 @@ jobs:
               if:   matrix.arch == 'x86_64-windows'
               run:  cargo install --path lighthouse --force --locked --features portable,gnosis --profile ${{ matrix.profile }}
 
-            - name: Configure GPG and create artifacts
+            - name: Compress artifacts
               if: startsWith(matrix.arch, 'x86_64-windows') != true
-              env:
-                  GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
-                  GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
               run: |
-                  export GPG_TTY=$(tty)
-                  echo "$GPG_SIGNING_KEY" | gpg --batch --import
                   mkdir artifacts
                   mv ~/.cargo/bin/lighthouse ./artifacts
+                  mv ~/.cargo/bin/lcli ./artifacts
                   cd artifacts
                   tar -czf lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz lighthouse
-                  echo "$GPG_PASSPHRASE" | gpg --passphrase-fd 0 --pinentry-mode loopback --batch -ab lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz
-                  for ext in "tar.gz" "tar.gz.asc";\
-                  do for f in *.$ext;\
-                    do cp $f "../${f%.$ext}.$ext";\
-                    done;\
-                  done
                   mv *tar.gz* ..
 
-            - name: Configure GPG and create artifacts Windows
+            - name: Compress artifacts Windows
               if: startsWith(matrix.arch, 'x86_64-windows')
-              env:
-                  GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
-                  GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
               run: |
-                  echo $env:GPG_SIGNING_KEY | gpg --batch --import
                   mkdir artifacts
                   move $env:USERPROFILE/.cargo/bin/lighthouse.exe ./artifacts
+                  move $env:USERPROFILE/.cargo/bin/lcli.exe ./artifacts
                   cd artifacts
                   tar -czf lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz lighthouse.exe
-                  gpg --passphrase "$env:GPG_PASSPHRASE" --batch --pinentry-mode loopback -ab lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz
                   move *tar.gz* ..
 
-            # =======================================================================
-            # Upload artifacts
-            # This is required to share artifacts between different jobs
-            # =======================================================================
-
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz
-                  path: lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz
-                  compression-level: 0
-
-            - name: Upload signature
-              uses: actions/upload-artifact@v4
-              with:
-                  name: lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz.asc
-                  path: lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz.asc
-                  compression-level: 0
-
-    draft-release:
-        name:   Draft Release
-        needs:  [build, extract-version]
-        runs-on: ubuntu-latest
-        env:
-            VERSION:  ${{ needs.extract-version.outputs.VERSION }}
-        steps:
-            # This is necessary for generating the changelog. It has to come before "Download Artifacts" or else it deletes the artifacts.
-            - name: Checkout sources
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            # ==============================
-            #       Download artifacts
-            # ==============================
-
-            - name: Download artifacts
-              uses: actions/download-artifact@v4
-
-            # ==============================
-            #       Create release draft
-            # ==============================
-
-            - name: Generate Full Changelog
-              id: changelog
+            # Create release
+            - name: Generate release tag
+              id: tag
               run: |
-                echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-                echo "$(git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 ${{ env.VERSION }}^)..${{ env.VERSION }})" >> $GITHUB_OUTPUT
-                echo "EOF" >> $GITHUB_OUTPUT
+                sudo timedatectl set-timezone Asia/Ho_Chi_Minh
+                sudo date -s "$(wget -qSO- --max-redirect=0 google.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z"
+                echo "release_tag=ActionBuild_${{ matrix.arch }}_$(date +"%Y.%m.%d_%H-%M-%S")" >> $GITHUB_OUTPUT
+            - name: Release
+              uses: softprops/action-gh-release@v1
+              with:
+                tag_name: ${{ steps.tag.outputs.release_tag }}
+                files: |
+                  ./lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz
+            # Done release
 
-            - name: Create Release Draft
-              env:
-                  GITHUB_USER: ${{ github.repository_owner }}
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-              # The formatting here is borrowed from OpenEthereum: https://github.com/openethereum/openethereum/blob/main/.github/workflows/build.yml
-              run: |
-                  body=$(cat <<- "ENDBODY"
-                  <Rick and Morty character>
-
-                  ## Testing Checklist (DELETE ME)
-
-                  - [ ] Run on synced Holesky Sigma Prime nodes.
-                  - [ ] Run on synced Canary (mainnet) Sigma Prime nodes.
-                  - [ ] Resync a Holesky node.
-                  - [ ] Resync a mainnet node.
-
-                  ## Release Checklist (DELETE ME)
-
-                  - [ ] Merge `unstable` -> `stable`.
-                  - [ ] Ensure docker images are published (check `latest` and the version tag).
-                  - [ ] Prepare Discord post.
-                  - [ ] Prepare Twitter post.
-                  - [ ] Prepare mailing list email.
-
-                  ## Summary
-
-                  Add a summary.
-
-                  ## Update Priority
-
-                  This table provides priorities for which classes of users should update particular components.
-
-                  |User Class |Beacon Node  | Validator Client|
-                  --- | --- | ---
-                  |Staking Users| <TODO> | <TODO> |
-                  |Non-Staking Users| <TODO>|---|
-
-                  *See [Update
-                  Priorities](https://lighthouse-book.sigmaprime.io/installation-priorities.html)
-                  more information about this table.*
-
-                  ## All Changes
-
-                  ${{ steps.changelog.outputs.CHANGELOG }}
-
-                  ## Binaries
-
-                  [See pre-built binaries documentation.](https://lighthouse-book.sigmaprime.io/installation-binaries.html)
-
-                  The binaries are signed with Sigma Prime's PGP key: `15E66D941F697E28F49381F426416DC3F30674B0`
-
-                  | System | Architecture | Binary | PGP Signature |
-                  |:---:|:---:|:---:|:---|
-                  | <img src="https://simpleicons.org/icons/apple.svg" style="width: 32px;"/> | x86_64 | [lighthouse-${{ env.VERSION }}-x86_64-apple-darwin.tar.gz](https://github.com/${{ env.REPO_NAME }}/releases/download/${{ env.VERSION }}/lighthouse-${{ env.VERSION }}-x86_64-apple-darwin.tar.gz) | [PGP Signature](https://github.com/${{ env.REPO_NAME }}/releases/download/${{ env.VERSION }}/lighthouse-${{ env.VERSION }}-x86_64-apple-darwin.tar.gz.asc) |
-                  | <img src="https://simpleicons.org/icons/linux.svg" style="width: 32px;"/> | x86_64 | [lighthouse-${{ env.VERSION }}-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ env.REPO_NAME }}/releases/download/${{ env.VERSION }}/lighthouse-${{ env.VERSION }}-x86_64-unknown-linux-gnu.tar.gz) | [PGP Signature](https://github.com/${{ env.REPO_NAME }}/releases/download/${{ env.VERSION }}/lighthouse-${{ env.VERSION }}-x86_64-unknown-linux-gnu.tar.gz.asc) |
-                  | <img src="https://simpleicons.org/icons/raspberrypi.svg" style="width: 32px;"/> | aarch64 | [lighthouse-${{ env.VERSION }}-aarch64-unknown-linux-gnu.tar.gz](https://github.com/${{ env.REPO_NAME }}/releases/download/${{ env.VERSION }}/lighthouse-${{ env.VERSION }}-aarch64-unknown-linux-gnu.tar.gz) | [PGP Signature](https://github.com/${{ env.REPO_NAME }}/releases/download/${{ env.VERSION }}/lighthouse-${{ env.VERSION }}-aarch64-unknown-linux-gnu.tar.gz.asc) |
-                  | <img src="https://upload.wikimedia.org/wikipedia/commons/c/c4/Windows_logo_-_2021_%28Black%29.svg" style="width: 32px;"/> | x86_64 | [lighthouse-${{ env.VERSION }}-x86_64-windows.tar.gz](https://github.com/${{ env.REPO_NAME }}/releases/download/${{ env.VERSION }}/lighthouse-${{ env.VERSION }}-x86_64-windows.tar.gz) | [PGP Signature](https://github.com/${{ env.REPO_NAME }}/releases/download/${{ env.VERSION }}/lighthouse-${{ env.VERSION }}-x86_64-windows.tar.gz.asc) |
-                  | | | | |
-                  | **System** | **Option** | - | **Resource** |
-                  | <img src="https://simpleicons.org/icons/docker.svg" style="width: 32px;"/> | Docker | [${{ env.VERSION }}](https://hub.docker.com/r/${{ env.IMAGE_NAME }}/tags?page=1&ordering=last_updated&name=${{ env.VERSION }}) | [${{ env.IMAGE_NAME }}](https://hub.docker.com/r/${{ env.IMAGE_NAME }}) |
-                  ENDBODY
-                  )
-                  assets=(./lighthouse-*.tar.gz*/lighthouse-*.tar.gz*)
-                  tag_name="${{ env.VERSION }}"
-                  echo "$body" | gh release create --draft -F "-" "$tag_name" "${assets[@]}"
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: write
+  pages: write
+  id-token: write
