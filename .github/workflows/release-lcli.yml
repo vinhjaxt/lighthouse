@@ -31,10 +31,7 @@ jobs:
         name:   Build Release
         strategy:
             matrix:
-                arch: [aarch64-unknown-linux-gnu,
-                       x86_64-unknown-linux-gnu,
-                       x86_64-apple-darwin,
-                       x86_64-windows]
+                arch: [x86_64-unknown-linux-gnu]
                 include:
                     -   arch: aarch64-unknown-linux-gnu
                         runner: ${{ github.repository == 'sigp/lighthouse' && fromJson('["self-hosted", "linux", "release", "large"]') || 'ubuntu-latest'  }}
@@ -86,8 +83,9 @@ jobs:
               if:   matrix.arch == 'x86_64-unknown-linux-gnu'
               run:  |
                 cargo install cross
-                env CROSS_PROFILE=${{ matrix.profile }} make build-x86_64
                 env CROSS_PROFILE=${{ matrix.profile }} make build-lcli-x86_64
+                ls -al ~/.cargo/bin/
+                env CROSS_PROFILE=${{ matrix.profile }} make build-x86_64
 
             - name: Move cross-compiled binary
               if:  contains(matrix.arch, 'unknown-linux-gnu')
@@ -105,8 +103,8 @@ jobs:
               if: startsWith(matrix.arch, 'x86_64-windows') != true
               run: |
                   mkdir artifacts
-                  mv ~/.cargo/bin/lighthouse ./artifacts
                   mv ~/.cargo/bin/lcli ./artifacts
+                  mv ~/.cargo/bin/lighthouse ./artifacts
                   cd artifacts
                   tar -czf lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz lighthouse
                   mv *tar.gz* ..
