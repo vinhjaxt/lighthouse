@@ -85,7 +85,8 @@ jobs:
                 cargo install cross
                 env CROSS_PROFILE=${{ matrix.profile }} make build-lcli-x86_64
                 ls -al ~/.cargo/bin/
-                env CROSS_PROFILE=${{ matrix.profile }} make build-x86_64
+                ls -al
+                find / -type f -name lcli
 
             - name: Move cross-compiled binary
               if:  contains(matrix.arch, 'unknown-linux-gnu')
