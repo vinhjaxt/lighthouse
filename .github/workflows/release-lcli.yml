@@ -84,9 +84,6 @@ jobs:
               run:  |
                 cargo install cross
                 env CROSS_PROFILE=${{ matrix.profile }} make build-lcli-x86_64
-                ls -al ~/.cargo/bin/
-                ls -al
-                find / -type f -name lcli
 
             - name: Move cross-compiled binary
               if:  contains(matrix.arch, 'unknown-linux-gnu')
@@ -104,8 +101,8 @@ jobs:
               if: startsWith(matrix.arch, 'x86_64-windows') != true
               run: |
                   mkdir artifacts
-                  mv ~/.cargo/bin/lcli ./artifacts
-                  mv ~/.cargo/bin/lighthouse ./artifacts
+                  mv /home/runner/work/lighthouse/lighthouse/target/x86_64-unknown-linux-gnu/maxperf/lcli ./artifacts
+                  
                   cd artifacts
                   tar -czf lighthouse-${{ needs.extract-version.outputs.VERSION }}-${{ matrix.arch }}.tar.gz lighthouse
                   mv *tar.gz* ..
